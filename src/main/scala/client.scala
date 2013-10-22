@@ -9,18 +9,22 @@ import scala.concurrent.Future
 
 object Client {
   type Handler[T] = Response => T
-  val Agent = "Trackjacket/0.1.0"
+  val Agent = "Track-jacket/0.1.0"
   trait Completion {
     def apply[T](handler: Client.Handler[T]): Future[T]
   }
   val Headers = Map(
     "Content-Type" -> "application/json",
-    "Accept" -> "application/json"
+    "Accept" -> "application/json",
+    "User-Agent" -> Agent
   )
   object Default {
     def port = 8080
     val host = "localhost"
     val credentials: Option[(String, String)] = None
+    val mem = 10.0
+    val cpus = 0.1
+    val instances = 1
   }
 }
 
@@ -58,18 +62,18 @@ case class Client(
   case class AppBuilder(
     id: String,
     _cmd: Option[String] = None,
-    _cpus: Option[Int] = None,
-    _mem: Option[Int] = None,
-    _instances: Int = 1,
+    _cpus: Double = Client.Default.cpus,
+    _mem: Double = Client.Default.mem,
+    _instances: Int = Client.Default.instances,
     _uris: List[String] = Nil,
     _env: Map[String, String] = Map.empty[String, String])
     extends Client.Completion {
 
     def cmd(str: String) = copy(_cmd = Some(str))
 
-    def cpus(n: Int) = copy(_cpus = Some(n))
+    def cpus(n: Double) = copy(_cpus = n)
 
-    def mem(megs: Int) = copy(_mem = Some(megs))
+    def mem(megs: Double) = copy(_mem = megs)
 
     def instances(n: Int) = copy(_instances = n)
 
@@ -92,6 +96,10 @@ case class Client(
   def scale(id: String, instances: Int) =
     complete(base.POST / "apps" / "scale" << compact(
       render(("id" -> id) ~ ("instances" -> instances))))
+
+  /** same as scaling to 0 instances */
+  def suspend(id: String) =
+    scale(id, 0)
 
   def close() = http.shutdown()
 }
