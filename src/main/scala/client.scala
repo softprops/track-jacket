@@ -55,7 +55,8 @@ case class Client(
     _cpus: Option[Int] = None,
     _mem: Option[Int] = None,
     _instances: Int = 1,
-    _uris: List[String] = Nil)
+    _uris: List[String] = Nil,
+    _env: Map[String, String] = Map.empty[String, String])
     extends Client.Completion {
 
     def cmd(str: String) = copy(_cmd = Some(str))
@@ -68,11 +69,14 @@ case class Client(
 
     def uris(strs: String*) = copy(_uris = strs.toList)
 
+    def env(kvs: (String, String)*) = copy(_env = kvs.toMap)
+
     def apply[T](handler: Client.Handler[T]): Future[T] =
       request(base.POST / "apps" / "start" << compact(
         render(("id"   -> id)    ~ ("cmd"       -> _cmd) ~
                ("cpus" -> _cpus) ~ ("instances" -> _instances) ~
-               ("mem"  -> _mem)  ~ ("uris"      -> _uris))))(handler)
+               ("mem"  -> _mem)  ~ ("uris"      -> _uris) ~
+               ("env"  -> _env))))(handler)
   }
 
   def stop(id: String) =
