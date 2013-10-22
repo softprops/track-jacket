@@ -17,11 +17,17 @@ object Client {
     "Content-Type" -> "application/json",
     "Accept" -> "application/json"
   )
+  object Default {
+    def port = 8080
+    val host = "localhost"
+    val credentials: Option[(String, String)] = None
+  }
 }
 
 case class Client(
-  host: String, port: Int = 8080,
-  credentials: Option[(String, String)] = None) {
+  host: String = Client.Default.host,
+  port: Int = Client.Default.port,
+  credentials: Option[(String, String)] = Client.Default.credentials) {
 
   private val http = new Http
 
@@ -30,7 +36,7 @@ case class Client(
   private def request[T](req: Req)(
     handler: Client.Handler[T]): Future[T] =
     http(credentials.map { case (user, pass) => req.as_!(user, pass) }
-               .getOrElse(req) OK handler)
+                    .getOrElse(req) OK handler)
 
   private def complete(req: Req): Client.Completion =
     new Client.Completion {
