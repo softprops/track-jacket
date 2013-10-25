@@ -9,7 +9,7 @@ import scala.concurrent.Future
 
 object Client {
   type Handler[T] = Response => T
-  val Agent = "Track-jacket/0.1.0"
+  val Agent = s"Track-jacket/${BuildInfo.version}"
   trait Completion {
     def apply[T](handler: Client.Handler[T]): Future[T]
   }
@@ -48,15 +48,19 @@ case class Client(
         request(req)(handler)
     }
 
+  /** return all apps registered with marathon */
   def apps =
     complete(base / "apps")
 
+  /** return all endpoints for all apps */
   def endpoints =
     complete(base / "endpoints")
 
+  /** return all endpoints associated with an app id */
   def endpoint(id: String) =
     complete(base / "endpoints" / id)
 
+  /** starts an app by building up an app requirements definition */
   def start(id: String) = AppBuilder(id)
 
   case class AppBuilder(
@@ -89,10 +93,12 @@ case class Client(
                ("env"  -> _env))))(handler)
   }
 
+  /** stop all instances of an app */
   def stop(id: String) =
     complete(base.POST / "apps" / "stop" << compact(
       render(("id" -> id))))
 
+  /** increase/decrease number of instances of app identified by id */
   def scale(id: String, instances: Int) =
     complete(base.POST / "apps" / "scale" << compact(
       render(("id" -> id) ~ ("instances" -> instances))))
@@ -100,6 +106,27 @@ case class Client(
   /** same as scaling to 0 instances */
   def suspend(id: String) =
     scale(id, 0)
+
+  /** search apps either by their id or cmd */
+  def search = Search()
+
+  case class Search(
+    _id: Option[String] = None,
+    _cmd: Option[String] = None)
+    extends Client.Completion {
+
+    def id(id: String) = copy(_id = String(id))
+
+    def cmd(str: String) = copy(_cmd = Some(str))
+
+    def apply[T](handler: Client.Handler[T]): Future[T] = {
+      val endpoint  = ((base / "apps" / "search") /: Seq(
+        _id.map(("id", _)), _cmd.map(("cmd" -> _))).flatten) {
+          case (req, (k, v)) => req.addParameter(k, v)
+        }
+      request(endpoint)(handler)
+    }
+  }
 
   def close() = http.shutdown()
 }
