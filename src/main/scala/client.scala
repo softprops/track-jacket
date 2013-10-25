@@ -115,7 +115,7 @@ case class Client(
     _cmd: Option[String] = None)
     extends Client.Completion {
 
-    def id(id: String) = copy(_id = String(id))
+    def id(id: String) = copy(_id = Some(id))
 
     def cmd(str: String) = copy(_cmd = Some(str))
 
