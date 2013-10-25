@@ -31,9 +31,8 @@ object Client {
 case class Client(
   host: String = Client.Default.host,
   port: Int = Client.Default.port,
-  credentials: Option[(String, String)] = Client.Default.credentials) {
-
-  private val http = new Http
+  credentials: Option[(String, String)] = Client.Default.credentials,
+  http: Http = new Http) {
 
   private def base = :/(host, port) / "v1" <:< Client.Headers
 
