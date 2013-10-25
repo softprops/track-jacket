@@ -127,5 +127,29 @@ case class Client(
     }
   }
 
+  /** lists all tasks */
+  def tasks = complete(base / "tasks")
+
+  /** kills tasks by app id or by host */
+  def killTask = KillTask()
+
+  case class KillTask(
+    _id: Option[String] = None,
+    _host: Option[String] = None)
+    extends Client.Completion {
+
+    def id(id: String) = copy(_id = Some(id))
+
+    def host(str: String) = copy(_host = Some(str))
+
+    def apply[T](handler: Client.Handler[T]): Future[T] = {
+      val endpoint  = ((base.POST / "tasks" / "kill") /: Seq(
+        _id.map(("appId", _)), _host.map(("host" -> _))).flatten) {
+          case (req, (k, v)) => req.addParameter(k, v)
+        }
+      request(endpoint)(handler)
+    }
+  }
+
   def close() = http.shutdown()
 }
