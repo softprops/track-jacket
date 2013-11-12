@@ -6,7 +6,7 @@ A slimly outfitted interface for getting your app up and running with [marathon]
 
 ## usage
 
-```
+```scala
 import trackjacket._
 import dispatch._
 
