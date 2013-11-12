@@ -8,23 +8,30 @@ import org.json4s.native.Printer.compact
 import scala.concurrent.Future
 
 object Client {
+
   type Handler[T] = Response => T
+
   val Agent = s"Track-jacket/${BuildInfo.version}"
+
   trait Completion {
     def apply[T](handler: Client.Handler[T]): Future[T]
   }
+
   val Headers = Map(
     "Content-Type" -> "application/json",
     "Accept" -> "application/json",
     "User-Agent" -> Agent
   )
+
   object Default {
     def port = 8080
     val host = "localhost"
     val credentials: Option[(String, String)] = None
-    val mem = 10.0
-    val cpus = 0.1
+    val mem = 128.0
+    val cpus = 1.0
     val instances = 1
+    val taskRateLimit = 1.0
+    val ports: List[Int] = Nil
   }
 }
 
@@ -69,7 +76,10 @@ case class Client(
     _mem: Double = Client.Default.mem,
     _instances: Int = Client.Default.instances,
     _uris: List[String] = Nil,
-    _env: Map[String, String] = Map.empty[String, String])
+    _env: Map[String, String] = Map.empty[String, String],
+    _taskRateLimit: Double = Client.Default.taskRateLimit,
+    _ports: List[Int] = Client.Default.ports,
+    _executor: Option[String] = None)
     extends Client.Completion {
 
     def cmd(str: String) = copy(_cmd = Some(str))
@@ -84,20 +94,34 @@ case class Client(
 
     def env(kvs: (String, String)*) = copy(_env = kvs.toMap)
 
+    /** Number of new tasks this app may spawn per second in response to
+     *  terminated tasks. This prevents frequently failing apps from spamming
+     *  the cluster.
+     */
+    def taskRateLimit(limit: Double) = copy(_taskRateLimit = limit)
+
+    def ports(ps: Int*) = copy(_ports = ps.toList)
+
+    def executor(exec: String) = copy(_executor = Some(exec))
+
+    // future response will have no body
     def apply[T](handler: Client.Handler[T]): Future[T] =
       request(base.POST / "apps" / "start" << compact(
         render(("id"   -> id)    ~ ("cmd"       -> _cmd) ~
                ("cpus" -> _cpus) ~ ("instances" -> _instances) ~
                ("mem"  -> _mem)  ~ ("uris"      -> _uris) ~
+               ("taskRateLimit" -> _taskRateLimit) ~
+               ("ports" -> _ports) ~ ("executor" -> _executor) ~
                ("env"  -> _env))))(handler)
   }
 
-  /** stop all instances of an app */
+  /** stop all instances of an app. The response will have no body */
   def stop(id: String) =
     complete(base.POST / "apps" / "stop" << compact(
       render(("id" -> id))))
 
-  /** increase/decrease number of instances of app identified by id */
+  /** increase/decrease number of instances of app identified by id.
+   *  The response will have no body */
   def scale(id: String, instances: Int) =
     complete(base.POST / "apps" / "scale" << compact(
       render(("id" -> id) ~ ("instances" -> instances))))
