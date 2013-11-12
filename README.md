@@ -19,6 +19,27 @@ val start =
   .env("env" -> "prod")(as.String)).either
 for (_ <- start.right) yield println("off you go")
 for (_ <- start.left) yield println("whooa nelly")
+(for { js <- cli.apps(as.json4s.Json) } yield {
+  for {
+    JArray(apps)                   <- js
+    JObject(app)                   <- apps
+    ("id", JString(id))            <- app
+    ("instances", JInt(instances)) <- app
+  } yield {
+    log.info(s"service: $id instances requested: $instances")
+    for (ejs <- cli.endpoint(id)(as.json4s.Json)) yield {
+      for {
+        JObject(endpoint) <- ejs
+        ("instances", JArray(instances))  <- endpoint
+        JObject(instance)                 <- instances
+        ("host", JString(host))           <- instance
+        ("ports", JArray(JInt(port):: _)) <- instance
+      } yield {
+      log.info(s"✈ $host:$port")
+    }
+   }.apply()
+  }.apply()
+})
 ```
 
 Doug Tangren (softprops) 2013
