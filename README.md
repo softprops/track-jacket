@@ -14,9 +14,10 @@ val cli = Client()
 val start =
  (cli.start("my_app")
   .cmd("java -jar app-1.0.jar")
+  .uris("/path/to/app-1.0.jar")
   .cpus(4) 
   .instances(4)
-  .env("env" -> "prod")(as.String)).either
+  .env("env" -> "prod")()).either
 for (_ <- start.right) yield println("off you go")
 for (_ <- start.left) yield println("whooa nelly")
 (for { js <- cli.apps(as.json4s.Json) } yield {
@@ -33,7 +34,7 @@ for (_ <- start.left) yield println("whooa nelly")
         ("instances", JArray(instances))  <- endpoint
         JObject(instance)                 <- instances
         ("host", JString(host))           <- instance
-        ("ports", JArray(JInt(port):: _)) <- instance
+        ("ports", JArray(JInt(port) :: _)) <- instance
       } yield {
       log.info(s"✈ $host:$port")
     }

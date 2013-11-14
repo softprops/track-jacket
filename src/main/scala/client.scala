@@ -44,13 +44,13 @@ case class Client(
   private def base = :/(host, port) / "v1" <:< Client.Headers
 
   private def request[T](req: Req)(
-    handler: Client.Handler[T]): Future[T] =
+    handler: Client.Handler[T] = as.Unit): Future[T] =
     http(credentials.map { case (user, pass) => req.as_!(user, pass) }
                     .getOrElse(req) OK handler)
 
   private def complete(req: Req): Client.Completion =
     new Client.Completion {
-      override def apply[T](handler: Client.Handler[T]) =
+      override def apply[T](handler: Client.Handler[T] = as.Unit) =
         request(req)(handler)
     }
 
@@ -105,7 +105,7 @@ case class Client(
     def executor(exec: String) = copy(_executor = Some(exec))
 
     // future response will have no body
-    def apply[T](handler: Client.Handler[T]): Future[T] =
+    def apply[T](handler: Client.Handler[T] = as.Unit): Future[T] =
       request(base.POST / "apps" / "start" << compact(
         render(("id"   -> id)    ~ ("cmd"       -> _cmd) ~
                ("cpus" -> _cpus) ~ ("instances" -> _instances) ~
@@ -166,7 +166,7 @@ case class Client(
 
     def host(str: String) = copy(_host = Some(str))
 
-    def apply[T](handler: Client.Handler[T]): Future[T] = {
+    def apply[T](handler: Client.Handler[T] = as.Unit): Future[T] = {
       val endpoint  = ((base.POST / "tasks" / "kill") /: Seq(
         _id.map(("appId", _)), _host.map(("host" -> _))).flatten) {
           case (req, (k, v)) => req.addParameter(k, v)
