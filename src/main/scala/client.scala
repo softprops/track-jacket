@@ -30,7 +30,7 @@ object Client {
     val mem = 128.0
     val cpus = 1.0
     val instances = 1
-    val taskRateLimit = 1.0
+    val taskRateLimit = None
     val ports: List[Int] = Nil
   }
 }
@@ -77,7 +77,7 @@ case class Client(
     _instances: Int = Client.Default.instances,
     _uris: List[String] = Nil,
     _env: Map[String, String] = Map.empty[String, String],
-    _taskRateLimit: Double = Client.Default.taskRateLimit,
+    _taskRateLimit: Option[Double] = None,
     _ports: List[Int] = Client.Default.ports,
     _executor: Option[String] = None)
     extends Client.Completion {
@@ -98,7 +98,7 @@ case class Client(
      *  terminated tasks. This prevents frequently failing apps from spamming
      *  the cluster.
      */
-    def taskRateLimit(limit: Double) = copy(_taskRateLimit = limit)
+    def taskRateLimit(limit: Double) = copy(_taskRateLimit = Some(limit))
 
     def ports(ps: Int*) = copy(_ports = ps.toList)
 
