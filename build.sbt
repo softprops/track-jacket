@@ -14,3 +14,5 @@ sourceGenerators in Compile <+= buildInfo
 buildInfoKeys := Seq[BuildInfoKey](version)
 
 buildInfoPackage := "trackjacket"
+
+scalacOptions += Opts.compile.deprecation

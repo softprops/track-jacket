@@ -35,16 +35,16 @@ object Client {
   }
 }
 
+// v2 client
 case class Client(
   host: String = Client.Default.host,
   port: Int = Client.Default.port,
   credentials: Option[(String, String)] = Client.Default.credentials,
   http: Http = new Http) {
 
-  private def base = :/(host, port) / "v1" <:< Client.Headers
+  private def base = :/(host, port) / "v2" <:< Client.Headers
 
-  private def request[T](req: Req)(
-    handler: Client.Handler[T] = as.Unit): Future[T] =
+  private def request[T](req: Req)(handler: Client.Handler[T] = as.Unit): Future[T] =
     http(credentials.map { case (user, pass) => req.as_!(user, pass) }
                     .getOrElse(req) OK handler)
 
@@ -54,23 +54,40 @@ case class Client(
         request(req)(handler)
     }
 
-  /** return all apps registered with marathon */
-  def apps =
-    complete(base / "apps")
+  case class Apps(_cmd: Option[String] = None) extends Client.Completion {
+    def cmd(str: String) = copy(_cmd = Some(str))
+    override def apply[T](handler: Client.Handler[T] = as.Unit) =
+      request(base / "apps" <<? Map.empty[String, String] ++ _cmd.map("command" -> _))(handler)
+  }
 
-  /** return all endpoints for all apps */
-  def endpoints =
-    complete(base / "endpoints")
+  case class KillTask(
+    appId: String,
+    taskId: String,
+    _scale: Boolean = false)
+    extends Client.Completion {
+    override def apply[T](handler: Client.Handler[T] = as.Unit) =
+      request(base.DELETE / "apps" / appId / "tasks" / taskId
+              <<? Map("scale" -> _scale.toString))(handler)
+  }
 
-  /** return all endpoints associated with an app id */
-  def endpoint(id: String) =
-    complete(base / "endpoints" / id)
+  case class KillTasks(
+    appId: String,
+    _host: Option[String] = None,
+    _scale: Boolean = false)
+    extends Client.Completion {
+    def host(h: String) = copy(_host = Some(h))
+    def scaleDown = copy(_scale = true)
+    override def apply[T](handler: Client.Handler[T] = as.Unit) =
+      request(base.DELETE / "apps" / appId / "tasks"
+              <<? Map("scale" -> _scale.toString) ++
+              _host.map("host" -> _))(handler)
+  }
 
-  /** starts an app by building up an app requirements definition */
-  def start(id: String) = AppBuilder(id)
+  case class Container(image: String, options: List[String])
+  case class Constraint(attr: String, operator: String, value: Option[String] = None)
 
   case class AppBuilder(
-    id: String,
+    id: String, create: Boolean = true,
     _cmd: Option[String] = None,
     _cpus: Double = Client.Default.cpus,
     _mem: Double = Client.Default.mem,
@@ -79,7 +96,9 @@ case class Client(
     _env: Map[String, String] = Map.empty[String, String],
     _taskRateLimit: Option[Double] = None,
     _ports: List[Int] = Client.Default.ports,
-    _executor: Option[String] = None)
+    _executor: Option[String] = None,
+    _container: Option[Container] = None,
+    _constraints: Option[List[Constraint]] = None)
     extends Client.Completion {
 
     def cmd(str: String) = copy(_cmd = Some(str))
@@ -104,76 +123,56 @@ case class Client(
 
     def executor(exec: String) = copy(_executor = Some(exec))
 
+    def container(cont: Container) = copy(_container = Some(cont))
+
+    def constraints(consts: Constraint*) = copy(_constraints = Some(consts.toList))
+
     // future response will have no body
     def apply[T](handler: Client.Handler[T] = as.Unit): Future[T] =
-      request(base.POST / "apps" / "start" << compact(
-        render(("id"   -> id)    ~ ("cmd"       -> _cmd) ~
-               ("cpus" -> _cpus) ~ ("instances" -> _instances) ~
-               ("mem"  -> _mem)  ~ ("uris"      -> _uris) ~
-               ("taskRateLimit" -> _taskRateLimit) ~
-               ("ports" -> _ports) ~ ("executor" -> _executor) ~
-               ("env"  -> _env))))(handler)
+      request((if (create) base.POST / "apps" else base.PUT / "apps" / id)
+              << compact(
+                render(("id"  -> Option(create).filter(identity).map(Function.const(id.toString))) ~
+                       ("cmd" -> _cmd) ~
+                       ("cpus" -> _cpus) ~ ("instances" -> _instances) ~
+                       ("mem"  -> _mem)  ~ ("uris"      -> _uris) ~
+                       ("taskRateLimit" -> _taskRateLimit) ~
+                       ("ports" -> _ports) ~ ("executor" -> _executor) ~
+                       ("env"  -> _env) ~ ("container" -> _container.map { c =>
+                         ("image" -> c.image) ~ ("options" -> c.options)
+                       }) ~ ("constraints" -> _constraints.map { 
+                         _.map {
+                           case Constraint(attr, oper, Some(value)) => List(attr, oper, value)
+                           case Constraint(attr, oper, _) => List(attr, oper)
+                         }
+                       }))))(handler)
   }
 
-  /** stop all instances of an app. The response will have no body */
-  def stop(id: String) =
-    complete(base.POST / "apps" / "stop" << compact(
-      render(("id" -> id))))
+  def apps = Apps()
 
-  /** increase/decrease number of instances of app identified by id.
-   *  The response will have no body */
-  def scale(id: String, instances: Int) =
-    complete(base.POST / "apps" / "scale" << compact(
-      render(("id" -> id) ~ ("instances" -> instances))))
+  // responds with 204 no content
+  def start(appId: String) =
+    AppBuilder(appId)
 
-  /** same as scaling to 0 instances */
-  def suspend(id: String) =
-    scale(id, 0)
+  // repdons with 20
+  def update(appId: String) =
+    AppBuilder(appId, create = false)
 
-  /** search apps either by their id or cmd */
-  def search = Search()
+  // responds with 204 no contnt
+  def kill(appId: String) =
+    complete(base.DELETE / "apps" / appId)
 
-  case class Search(
-    _id: Option[String] = None,
-    _cmd: Option[String] = None)
-    extends Client.Completion {
+  // responds with { "app": { def } }
+  def app(appId: String) =
+    complete(base / "apps" / appId)
 
-    def id(id: String) = copy(_id = Some(id))
+  // responses with { tasks: [resolved tasks] }
+  def tasks(appId: String) =
+    complete(base / "apps" / appId / "tasks")
 
-    def cmd(str: String) = copy(_cmd = Some(str))
+  // responds with { tasks: [killed tasks] }
+  def killTasks(appId: String) =
+    KillTasks(appId)
 
-    def apply[T](handler: Client.Handler[T]): Future[T] = {
-      val endpoint  = ((base / "apps" / "search") /: Seq(
-        _id.map(("id", _)), _cmd.map(("cmd" -> _))).flatten) {
-          case (req, (k, v)) => req.addParameter(k, v)
-        }
-      request(endpoint)(handler)
-    }
-  }
-
-  /** lists all tasks */
-  def tasks = complete(base / "tasks")
-
-  /** kills tasks by app id or by host */
-  def killTask = KillTask()
-
-  case class KillTask(
-    _id: Option[String] = None,
-    _host: Option[String] = None)
-    extends Client.Completion {
-
-    def id(id: String) = copy(_id = Some(id))
-
-    def host(str: String) = copy(_host = Some(str))
-
-    def apply[T](handler: Client.Handler[T] = as.Unit): Future[T] = {
-      val endpoint  = ((base.POST / "tasks" / "kill") /: Seq(
-        _id.map(("appId", _)), _host.map(("host" -> _))).flatten) {
-          case (req, (k, v)) => req.addParameter(k, v)
-        }
-      request(endpoint)(handler)
-    }
-  }
-
-  def close() = http.shutdown()
+  def killTask(appId: String, taskId: String) =
+    KillTask(appId, taskId)
 }
