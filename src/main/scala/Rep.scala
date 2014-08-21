@@ -9,11 +9,11 @@ trait Rep[T] {
 }
 
 object Rep {
-  implicit object Identity extends Rep[Response] {
+  implicit val Identity: Rep[Response] = new Rep[Response] {
     def map = identity(_)
   }
 
-  implicit object Nada extends Rep[Unit] {
+  implicit val Nada: Rep[Unit] = new Rep[Unit] {
     def map = _ => ()
   }
 }

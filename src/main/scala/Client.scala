@@ -1,7 +1,7 @@
 package trackjacket
 
 import com.ning.http.client.{ AsyncHandler, Response }
-import dispatch.{ :/, Http, Req }
+import dispatch.{ as, Http, OkFunctionHandler, Req, :/ }
 import org.json4s.JsonDSL._
 import org.json4s.native.JsonMethods.render
 import org.json4s.native.Printer.compact
@@ -19,7 +19,7 @@ object Client {
     /** @return a future transformed by Response => T */
     def apply[T]
       (f: Response => T): Future[T] =
-        apply(new FunctionHandler(f))
+        apply(new OkFunctionHandler(f))
     def apply[T]
       (handler: Client.Handler[T]): Future[T]
   }
@@ -55,29 +55,33 @@ case class Client(
 
   private def request[T]
     (req: Req)
-    (handler: Client.Handler[T] = as.Unit): Future[T] =
+    (handler: Client.Handler[T]): Future[T] =
       http(credentials.map { case (user, pass) => req.as_!(user, pass) }
-           .getOrElse(req) OK handler)
+           .getOrElse(req) > handler)
 
-  private def complete[T: Rep](req: Req): Client.Completion =
+  private def complete[T: Rep](req: Req): Client.Completion[T] =
     new Client.Completion[T] {
-      override def apply[T](handler: Client.Handler[T] = as.Unit) =
+      override def apply[T](handler: Client.Handler[T]) =
         request(req)(handler)
     }
 
-  case class Apps(_cmd: Option[String] = None) extends Client.Completion {
+  case class Apps(_cmd: Option[String] = None)
+    extends Client.Completion[Response] {
     def cmd(str: String) = copy(_cmd = Some(str))
-    override def apply[T](handler: Client.Handler[T] = as.Apps) =
-      request(base / "apps" <<? Map.empty[String, String] ++ _cmd.map("command" -> _))(handler)
+    override def apply[T]
+      (handler: Client.Handler[T]) =
+        request(base / "apps"
+                <<? Map.empty[String, String]
+                    ++ _cmd.map("command" -> _))(handler)
   }
 
   case class KillTask(
     appId: String,
     taskId: String,
     _scale: Boolean = false)
-    extends Client.Completion {
+    extends Client.Completion[Response] {
     def scalaDown = copy(_scale = true)
-    override def apply[T](handler: Client.Handler[T] = as.Unit) =
+    override def apply[T](handler: Client.Handler[T]) =
       request(base.DELETE / "apps" / appId / "tasks" / taskId
               <<? Map("scale" -> _scale.toString))(handler)
   }
@@ -85,11 +89,11 @@ case class Client(
   case class KillTasks(
     appId: String,
     _host: Option[String] = None,
-    _scale: Boolean = false)
-    extends Client.Completion {
+    _scale: Boolean       = false)
+    extends Client.Completion[Response] {
     def host(h: String) = copy(_host = Some(h))
     def scaleDown = copy(_scale = true)
-    override def apply[T](handler: Client.Handler[T] = as.Unit) =
+    override def apply[T](handler: Client.Handler[T]) =
       request(base.DELETE / "apps" / appId / "tasks"
               <<? Map("scale" -> _scale.toString) ++
               _host.map("host" -> _))(handler)
@@ -138,7 +142,7 @@ case class Client(
     _executor: Option[String]      = None,
     _container: Option[Container]  = None,
     _constraints: Option[List[Constraints.Constraint]] = None)
-    extends Client.Completion {
+    extends Client.Completion[Response] {
 
     def cmd(str: String) = copy(_cmd = Some(str))
 
@@ -169,7 +173,7 @@ case class Client(
     def constraints(consts: Constraints.Constraint*) = copy(_constraints = Some(consts.toList))
 
     // future response will have no body
-    def apply[T](handler: Client.Handler[T] = as.Unit): Future[T] =
+    def apply[T](handler: Client.Handler[T]): Future[T] =
       request((if (create) base.POST / "apps" else base.PUT / "apps" / id)
               << compact(
                 render(("id"  -> Option(create).filter(identity).map(Function.const(id.toString))) ~
