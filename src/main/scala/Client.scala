@@ -12,8 +12,16 @@ object Client {
 
   val Agent = s"Track-jacket/${BuildInfo.version}"
 
-  trait Completion {
-    def apply[T](handler: Client.Handler[T]): Future[T]
+  abstract class Completion extends Completer {
+    /** @return a future of the default representation of the response */
+    def apply(): Future[Response] =
+      apply(identity)
+    /** @return a future transformed by Response => T */
+    def apply[T]
+      (f: Response => T): Future[T] =
+        apply(new FunctionHandler(f))
+    def apply[T]
+      (handler: Client.Handler[T]): Future[T]
   }
 
   val Headers = Map(
