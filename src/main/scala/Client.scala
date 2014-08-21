@@ -12,10 +12,10 @@ object Client {
 
   val Agent = s"Track-jacket/${BuildInfo.version}"
 
-  abstract class Completion extends Completer {
+  abstract class Completion[T: Rep] {
     /** @return a future of the default representation of the response */
-    def apply(): Future[Response] =
-      apply(identity)
+    def apply(): Future[T] =
+      apply(implicitly[Rep[T]].map)
     /** @return a future transformed by Response => T */
     def apply[T]
       (f: Response => T): Future[T] =
@@ -59,8 +59,8 @@ case class Client(
       http(credentials.map { case (user, pass) => req.as_!(user, pass) }
            .getOrElse(req) OK handler)
 
-  private def complete(req: Req): Client.Completion =
-    new Client.Completion {
+  private def complete[T: Rep](req: Req): Client.Completion =
+    new Client.Completion[T] {
       override def apply[T](handler: Client.Handler[T] = as.Unit) =
         request(req)(handler)
     }
@@ -197,15 +197,15 @@ case class Client(
 
   // responds with 204 no content
   def kill(appId: String) =
-    complete(base.DELETE / "apps" / appId)
+    complete[Response](base.DELETE / "apps" / appId)
 
   // responds with { "app": { def } }
   def app(appId: String) =
-    complete(base / "apps" / appId)
+    complete[Response](base / "apps" / appId)
 
   // responses with { tasks: [resolved tasks] }
   def tasks(appId: String) =
-    complete(base / "apps" / appId / "tasks")
+    complete[Response](base / "apps" / appId / "tasks")
 
   // responds with { tasks: [killed tasks] }
   def killTasks(appId: String) =
